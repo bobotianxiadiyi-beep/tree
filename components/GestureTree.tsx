@@ -4,7 +4,6 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { gsap } from 'gsap';
-import { Landmark, Results } from '../types';
 
 const PARTICLE_COUNT = 5000;
 const TREE_HEIGHT = 25;
@@ -74,25 +73,21 @@ function noise3D(x: number, y: number, z: number): number {
 
 const GestureTree: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
   
   // UI States
-  const [cameraStatus, setCameraStatus] = useState<'LOADING' | 'ACTIVE' | 'ERROR'>('LOADING');
-  const [interactionState, setInteractionState] = useState<'IDLE' | 'PINCHING'>('IDLE');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isTreeFormed, setIsTreeFormed] = useState(false);
   const [currentTheme, setCurrentTheme] = useState<string>('经典圣诞');
+  const [isSnowing, setIsSnowing] = useState(false);
 
   // Logic Refs
-  const isPinchingRef = useRef(false);
   const pinchStrengthRef = useRef(0);
   const rotationTargetRef = useRef({ x: 0, y: 0 });
   const rotationCurrentRef = useRef({ x: 0, y: 0 });
   const timeRef = useRef(0);
   const colorThemeRef = useRef(0);
-  const wasOneFingerRef = useRef(false);
-  const wasTwoFingersRef = useRef(false);
-  const wasThreeFingersRef = useRef(false);
   const isSnowingRef = useRef(false);
+  const isDraggingRef = useRef(false);
+  const lastMouseRef = useRef({ x: 0, y: 0 });
   
   // Three.js Refs
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -408,7 +403,6 @@ const GestureTree: React.FC = () => {
 
       material.uniforms.time.value = timeRef.current;
 
-      const isPinching = isPinchingRef.current;
       const pinchStrength = pinchStrengthRef.current;
         
         for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -470,7 +464,8 @@ const GestureTree: React.FC = () => {
 
       // Star Animation
       if (starRef.current) {
-        const targetScale = isPinching ? 5 + Math.sin(timeRef.current * 4) * 1.5 : 0;
+        const isTreeActive = pinchStrengthRef.current > 0.5;
+        const targetScale = isTreeActive ? 5 + Math.sin(timeRef.current * 4) * 1.5 : 0;
         gsap.to(starRef.current.scale, {
           x: targetScale,
           y: targetScale,
@@ -481,7 +476,8 @@ const GestureTree: React.FC = () => {
 
       // Trunk Animation
       if (trunkRef.current) {
-        trunkRef.current.visible = isPinching;
+        const isTreeActive = pinchStrengthRef.current > 0.5;
+        trunkRef.current.visible = isTreeActive;
         trunkRef.current.rotation.y += 0.001;
       }
 
@@ -560,18 +556,11 @@ const GestureTree: React.FC = () => {
       });
 
       // Rotation Control
-      const targetRotX = rotationTargetRef.current.y * 1.8;
-      const targetRotY = -rotationTargetRef.current.x * 2.5;
-
-      if (isPinching) {
-        gsap.to(rotationCurrentRef.current, {
-          x: targetRotX,
-          y: targetRotY,
-          duration: 0.8,
-          ease: 'power2.out',
-        });
-      } else {
-        rotationCurrentRef.current.y += 0.002;
+      const isTreeActive = pinchStrengthRef.current > 0.5;
+      
+      if (isTreeActive && !isDraggingRef.current) {
+        // 自动旋转
+        rotationCurrentRef.current.y += 0.005;
       }
 
       if (treeGroupRef.current) {
@@ -613,437 +602,275 @@ const GestureTree: React.FC = () => {
     };
   }, []); 
 
-  // 2. Initialize MediaPipe
+  // 2. Mouse Control
   useEffect(() => {
-    let handsInstance: any = null;
-    let cameraInstance: any = null;
-    let isMounted = true;
-
-    const initCamera = async () => {
-        try {
-            let attempts = 0;
-        const getCamera = () => {
-          const win = window as any;
-          return (
-            win.Camera ||
-            win.CameraUtils?.Camera ||
-            (win.camera_utils && win.camera_utils.Camera) ||
-            null
-          );
-        };
-
-        while ((!window.Hands || !getCamera()) && attempts < 100) {
-          await new Promise((r) => setTimeout(r, 50));
-                attempts++;
-            }
-
-            if (!isMounted) return;
-
-        const CameraClass = getCamera();
-        if (!window.Hands || !CameraClass) {
-          setErrorMessage('MediaPipe failed to load. Please check connection and refresh.');
-                setCameraStatus('ERROR');
-                return;
-            }
-
-            handsInstance = new window.Hands({
-          locateFile: (file: string) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
-            });
-
-            handsInstance.setOptions({
-                maxNumHands: 1,
-                modelComplexity: 1,
-                minDetectionConfidence: 0.5,
-                minTrackingConfidence: 0.5,
-            });
-
-            handsInstance.onResults((results: Results) => {
-                if (!isMounted) return;
-                
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    const landmarks = results.multiHandLandmarks[0];
-            const wrist = landmarks[0];
-            const thumbTip = landmarks[4];
-            const indexTip = landmarks[8];
-            const middleTip = landmarks[12];
-            const ringTip = landmarks[16];
-            const pinkyTip = landmarks[20];
-            const palmBase = landmarks[9];
-
-            // More sensitive detection with improved thresholds
-            const indexCurled = Math.abs(indexTip.y - palmBase.y) < 0.12;
-            const middleCurled = Math.abs(middleTip.y - palmBase.y) < 0.12;
-            const ringCurled = Math.abs(ringTip.y - palmBase.y) < 0.12;
-            const pinkyCurled = Math.abs(pinkyTip.y - palmBase.y) < 0.12;
-            const thumbCurled = Math.abs(thumbTip.y - palmBase.y) < 0.18;
-
-            // Extended means clearly above palm
-            const indexExtended = Math.abs(indexTip.y - palmBase.y) > 0.15;
-            const middleExtended = Math.abs(middleTip.y - palmBase.y) > 0.15;
-            const ringExtended = Math.abs(ringTip.y - palmBase.y) > 0.15;
-            const pinkyExtended = Math.abs(pinkyTip.y - palmBase.y) > 0.15;
-
-            const fingersCurled = [indexCurled, middleCurled, ringCurled, pinkyCurled].filter(x => x).length;
-            const fingersExtended = [indexExtended, middleExtended, ringExtended, pinkyExtended].filter(x => x).length;
-            const isFist = fingersCurled >= 3 && thumbCurled;
-
-            // More lenient finger counting (1, 2, 3)
-            // One finger: Only index is clearly extended, others are clearly not
-            const isOneFinger = indexExtended && !middleExtended && !ringExtended && !pinkyExtended;
-            
-            // Two fingers: Index and middle extended, others not
-            const isTwoFingers = indexExtended && middleExtended && !ringExtended && !pinkyExtended;
-            
-            // Three fingers: Index, middle, ring extended, pinky not
-            const isThreeFingers = indexExtended && middleExtended && ringExtended && !pinkyExtended;
-
-            // Handle gestures with priority
-            if (isOneFinger && !wasOneFingerRef.current) {
-              // 1 finger: 切换颜色主题
-              wasOneFingerRef.current = true;
-
-              const oldTheme = colorThemeRef.current;
-              const newTheme = (oldTheme + 1) % 3;
-              colorThemeRef.current = newTheme;
-
-              const themeNames = ['经典圣诞', '冰雪奇缘', '梦幻粉紫'];
-              setCurrentTheme(themeNames[newTheme]);
-
-              if (particlesRef.current) {
-                const colors = particlesRef.current.geometry.attributes.color.array as Float32Array;
-                const colorGold = new THREE.Color(0xFFD700);
-                const colorWhite = new THREE.Color(0xFFFFFF);
-                const colorRed = new THREE.Color(0xFF6B6B);
-                const colorGreen = new THREE.Color(0x4ECDC4);
-                const colorBlue = new THREE.Color(0x4169E1);
-                const colorSilver = new THREE.Color(0xC0C0C0);
-                const colorPink = new THREE.Color(0xFF69B4);
-                const colorPurple = new THREE.Color(0x9370DB);
-
-                for (let i = 0; i < PARTICLE_COUNT; i++) {
-                  const i3 = i * 3;
-                  const rand = Math.random();
-                  let tempColor = new THREE.Color();
-
-                  if (newTheme === 0) {
-                    if (rand > 0.7) tempColor.copy(colorWhite).multiplyScalar(1.3);
-                    else if (rand > 0.4) tempColor.copy(colorGold).multiplyScalar(1.5);
-                    else if (rand > 0.25) tempColor.copy(colorRed).multiplyScalar(1.2);
-                    else tempColor.copy(colorGreen);
-                  } else if (newTheme === 1) {
-                    if (rand > 0.6) tempColor.copy(colorWhite).multiplyScalar(1.4);
-                    else if (rand > 0.3) tempColor.copy(colorBlue).multiplyScalar(1.5);
-                    else tempColor.copy(colorSilver).multiplyScalar(1.3);
-                  } else {
-                    if (rand > 0.6) tempColor.copy(colorWhite).multiplyScalar(1.4);
-                    else if (rand > 0.3) tempColor.copy(colorPink).multiplyScalar(1.5);
-                    else tempColor.copy(colorPurple).multiplyScalar(1.3);
-                  }
-
-                  colors[i3] = tempColor.r;
-                  colors[i3 + 1] = tempColor.g;
-                  colors[i3 + 2] = tempColor.b;
-                }
-                particlesRef.current.geometry.attributes.color.needsUpdate = true;
-              }
-            } else if (!isOneFinger) {
-              wasOneFingerRef.current = false;
-            }
-
-            if (isTwoFingers && !wasTwoFingersRef.current && !isSnowingRef.current) {
-              // 2 fingers: 飘雪
-              wasTwoFingersRef.current = true;
-              isSnowingRef.current = true;
-
-              if (snowParticlesRef.current) {
-                snowParticlesRef.current.visible = true;
-              }
-
-              setTimeout(() => {
-                isSnowingRef.current = false;
-                if (snowParticlesRef.current) {
-                  snowParticlesRef.current.visible = false;
-                }
-              }, 10000);
-            } else if (!isTwoFingers) {
-              wasTwoFingersRef.current = false;
-            }
-
-            if (isThreeFingers && !wasThreeFingersRef.current) {
-              // 3 fingers: 烟花 - 多层爆炸效果
-              wasThreeFingersRef.current = true;
-
-              const fireworkPos = {
-                x: (palmBase.x - 0.5) * 40,
-                y: (palmBase.y - 0.5) * -30 + 10,
-                z: 0
-              };
-
-              // 创建3个不同层次的烟花（多层爆炸）
-              const layers = [
-                { count: 200, speed: 0.8, size: 0.8, delay: 0 },      // 外层：快速、大粒子
-                { count: 150, speed: 0.5, size: 0.6, delay: 0.1 },   // 中层：中速、中粒子
-                { count: 100, speed: 0.3, size: 0.4, delay: 0.2 },   // 内层：慢速、小粒子
-              ];
-
-              layers.forEach((layer, layerIndex) => {
-                setTimeout(() => {
-                  const FW_PARTICLES = layer.count;
-                  const fwGeometry = new THREE.BufferGeometry();
-                  const fwPositions = new Float32Array(FW_PARTICLES * 3);
-                  const fwVelocities = new Float32Array(FW_PARTICLES * 3);
-                  const fwColors = new THREE.Float32Array(FW_PARTICLES * 3);
-                  const fwSizes = new Float32Array(FW_PARTICLES);
-
-                  // 每层不同颜色，更丰富
-                  const fwColor1 = new THREE.Color();
-                  const fwColor2 = new THREE.Color();
-                  fwColor1.setHSL(Math.random(), 1.0, 0.6);
-                  fwColor2.setHSL((Math.random() + 0.3) % 1.0, 1.0, 0.7); // 互补色
-
-                  for (let i = 0; i < FW_PARTICLES; i++) {
-                    fwPositions[i * 3] = fireworkPos.x;
-                    fwPositions[i * 3 + 1] = fireworkPos.y;
-                    fwPositions[i * 3 + 2] = fireworkPos.z;
-
-                    // 球形均匀分布
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(2 * Math.random() - 1); // 均匀球面分布
-                    const speed = (Math.random() * 0.4 + 0.8) * layer.speed;
-
-                    fwVelocities[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
-                    fwVelocities[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * speed;
-                    fwVelocities[i * 3 + 2] = Math.cos(phi) * speed;
-
-                    // 渐变颜色（从颜色1到颜色2）
-                    const colorMix = i / FW_PARTICLES;
-                    const tempColor = new THREE.Color().lerpColors(fwColor1, fwColor2, colorMix);
-                    
-                    fwColors[i * 3] = tempColor.r;
-                    fwColors[i * 3 + 1] = tempColor.g;
-                    fwColors[i * 3 + 2] = tempColor.b;
-                    
-                    // 粒子大小变化
-                    fwSizes[i] = layer.size * (0.8 + Math.random() * 0.4);
-                  }
-
-                  fwGeometry.setAttribute('position', new THREE.BufferAttribute(fwPositions, 3).setUsage(THREE.DynamicDrawUsage));
-                  fwGeometry.setAttribute('color', new THREE.BufferAttribute(fwColors, 3));
-                  fwGeometry.setAttribute('size', new THREE.BufferAttribute(fwSizes, 1));
-
-                  const fwMaterial = new THREE.PointsMaterial({
-                    size: layer.size,
-                    vertexColors: true,
-                    blending: THREE.AdditiveBlending,
-                    transparent: true,
-                    sizeAttenuation: true, // 距离衰减
-                  });
-
-                  const fwParticles = new THREE.Points(fwGeometry, fwMaterial);
-                  sceneRef.current?.add(fwParticles);
-
-                  fireworksRef.current.push({
-                    particles: fwParticles,
-                    velocities: fwVelocities,
-                    age: 0,
-                    lifetime: 3.0, // 增加到3秒
-                    active: true,
-                    layerIndex: layerIndex
-                  });
-                }, layer.delay * 1000);
-              });
-
-              // Star flash
-              if (starRef.current && isPinchingRef.current) {
-                gsap.to(starRef.current.scale, {
-                  x: 10,
-                  y: 10,
-                  duration: 0.2,
-                  ease: 'power2.out',
-                  yoyo: true,
-                  repeat: 1,
-                });
-              }
-            } else if (!isThreeFingers) {
-              wasThreeFingersRef.current = false;
-            }
-
-            // Fist gesture for tree control
-            if (isFist) {
-              const strength = fingersCurled / 4.0;
-              gsap.to(pinchStrengthRef, {
-                current: strength,
-                duration: 0.3,
-                ease: 'power2.out',
-              });
-                        isPinchingRef.current = true;
-                        setInteractionState('PINCHING');
-                        
-              const cx = palmBase.x;
-              const cy = palmBase.y;
-                        rotationTargetRef.current = {
-                            x: (cx - 0.5) * 2,
-                y: (cy - 0.5) * 2,
-              };
-            } else if (!isFist && !isOneFinger && !isTwoFingers && !isThreeFingers) {
-              gsap.to(pinchStrengthRef, {
-                current: 0,
-                duration: 0.5,
-                ease: 'power2.out',
-              });
-                        isPinchingRef.current = false;
-                        setInteractionState('IDLE');
-                    }
-                } else {
-            // No hands
-            gsap.to(pinchStrengthRef, {
-              current: 0,
-              duration: 0.5,
-              ease: 'power2.out',
-            });
-                    isPinchingRef.current = false;
-                    setInteractionState('IDLE');
-                }
-            });
-
-            if (videoRef.current) {
-          const CameraClass = getCamera();
-          cameraInstance = new CameraClass(videoRef.current, {
-                    onFrame: async () => {
-                        if (handsInstance && videoRef.current) {
-                            await handsInstance.send({ image: videoRef.current });
-                        }
-                    },
-                    width: 640,
-            height: 480,
-                });
-                await cameraInstance.start();
-                if (isMounted) setCameraStatus('ACTIVE');
-            }
-        } catch (e: any) {
-            console.error(e);
-            if (isMounted) {
-                setCameraStatus('ERROR');
-          setErrorMessage('Camera access denied. Please allow camera permissions.');
-            }
-        }
+    const handleMouseDown = (e: MouseEvent) => {
+      if (isTreeFormed) {
+        isDraggingRef.current = true;
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      }
     };
 
-    initCamera();
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDraggingRef.current && isTreeFormed) {
+        const deltaX = e.clientX - lastMouseRef.current.x;
+        const deltaY = e.clientY - lastMouseRef.current.y;
+        
+        rotationCurrentRef.current.y += deltaX * 0.01;
+        rotationCurrentRef.current.x += deltaY * 0.01;
+        
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      }
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+    };
+
+    window.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
 
     return () => {
-        isMounted = false;
-        if (handsInstance) handsInstance.close();
-        if (cameraInstance) cameraInstance.stop();
+      window.removeEventListener('mousedown', handleMouseDown);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, []);
+  }, [isTreeFormed]);
+
+  // 3. Button Handlers
+  const toggleTree = () => {
+    setIsTreeFormed(!isTreeFormed);
+    gsap.to(pinchStrengthRef, {
+      current: !isTreeFormed ? 1 : 0,
+      duration: 1.5,
+      ease: 'power2.inOut',
+    });
+  };
+
+  const changeTheme = () => {
+    const newTheme = (colorThemeRef.current + 1) % 3;
+    colorThemeRef.current = newTheme;
+
+    const themeNames = ['经典圣诞', '冰雪奇缘', '梦幻粉紫'];
+    setCurrentTheme(themeNames[newTheme]);
+
+    if (particlesRef.current) {
+      const colors = particlesRef.current.geometry.attributes.color.array as Float32Array;
+      const colorGold = new THREE.Color(0xFFD700);
+      const colorWhite = new THREE.Color(0xFFFFFF);
+      const colorRed = new THREE.Color(0xFF6B6B);
+      const colorGreen = new THREE.Color(0x4ECDC4);
+      const colorBlue = new THREE.Color(0x4169E1);
+      const colorSilver = new THREE.Color(0xC0C0C0);
+      const colorPink = new THREE.Color(0xFF69B4);
+      const colorPurple = new THREE.Color(0x9370DB);
+
+      for (let i = 0; i < PARTICLE_COUNT; i++) {
+        const i3 = i * 3;
+        const rand = Math.random();
+        let tempColor = new THREE.Color();
+
+        if (newTheme === 0) {
+          if (rand > 0.7) tempColor.copy(colorWhite).multiplyScalar(1.3);
+          else if (rand > 0.4) tempColor.copy(colorGold).multiplyScalar(1.5);
+          else if (rand > 0.25) tempColor.copy(colorRed).multiplyScalar(1.2);
+          else tempColor.copy(colorGreen);
+        } else if (newTheme === 1) {
+          if (rand > 0.6) tempColor.copy(colorWhite).multiplyScalar(1.4);
+          else if (rand > 0.3) tempColor.copy(colorBlue).multiplyScalar(1.5);
+          else tempColor.copy(colorSilver).multiplyScalar(1.3);
+        } else {
+          if (rand > 0.6) tempColor.copy(colorWhite).multiplyScalar(1.4);
+          else if (rand > 0.3) tempColor.copy(colorPink).multiplyScalar(1.5);
+          else tempColor.copy(colorPurple).multiplyScalar(1.3);
+        }
+
+        colors[i3] = tempColor.r;
+        colors[i3 + 1] = tempColor.g;
+        colors[i3 + 2] = tempColor.b;
+      }
+      particlesRef.current.geometry.attributes.color.needsUpdate = true;
+    }
+  };
+
+  const toggleSnow = () => {
+    if (!isSnowingRef.current) {
+      setIsSnowing(true);
+      isSnowingRef.current = true;
+
+      if (snowParticlesRef.current) {
+        snowParticlesRef.current.visible = true;
+      }
+
+      setTimeout(() => {
+        setIsSnowing(false);
+        isSnowingRef.current = false;
+        if (snowParticlesRef.current) {
+          snowParticlesRef.current.visible = false;
+        }
+      }, 10000);
+    }
+  };
+
+  const launchFireworks = () => {
+    const fireworkPos = {
+      x: (Math.random() - 0.5) * 20,
+      y: 10 + Math.random() * 10,
+      z: 0
+    };
+
+    const layers = [
+      { count: 200, speed: 0.8, size: 0.8, delay: 0 },
+      { count: 150, speed: 0.5, size: 0.6, delay: 0.1 },
+      { count: 100, speed: 0.3, size: 0.4, delay: 0.2 },
+    ];
+
+    layers.forEach((layer, layerIndex) => {
+      setTimeout(() => {
+        const FW_PARTICLES = layer.count;
+        const fwGeometry = new THREE.BufferGeometry();
+        const fwPositions = new Float32Array(FW_PARTICLES * 3);
+        const fwVelocities = new Float32Array(FW_PARTICLES * 3);
+        const fwColors = new THREE.Float32Array(FW_PARTICLES * 3);
+        const fwSizes = new Float32Array(FW_PARTICLES);
+
+        const fwColor1 = new THREE.Color();
+        const fwColor2 = new THREE.Color();
+        fwColor1.setHSL(Math.random(), 1.0, 0.6);
+        fwColor2.setHSL((Math.random() + 0.3) % 1.0, 1.0, 0.7);
+
+        for (let i = 0; i < FW_PARTICLES; i++) {
+          fwPositions[i * 3] = fireworkPos.x;
+          fwPositions[i * 3 + 1] = fireworkPos.y;
+          fwPositions[i * 3 + 2] = fireworkPos.z;
+
+          const theta = Math.random() * Math.PI * 2;
+          const phi = Math.acos(2 * Math.random() - 1);
+          const speed = (Math.random() * 0.4 + 0.8) * layer.speed;
+
+          fwVelocities[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
+          fwVelocities[i * 3 + 1] = Math.sin(phi) * Math.sin(theta) * speed;
+          fwVelocities[i * 3 + 2] = Math.cos(phi) * speed;
+
+          const colorMix = i / FW_PARTICLES;
+          const tempColor = new THREE.Color().lerpColors(fwColor1, fwColor2, colorMix);
+          
+          fwColors[i * 3] = tempColor.r;
+          fwColors[i * 3 + 1] = tempColor.g;
+          fwColors[i * 3 + 2] = tempColor.b;
+          
+          fwSizes[i] = layer.size * (0.8 + Math.random() * 0.4);
+        }
+
+        fwGeometry.setAttribute('position', new THREE.BufferAttribute(fwPositions, 3).setUsage(THREE.DynamicDrawUsage));
+        fwGeometry.setAttribute('color', new THREE.BufferAttribute(fwColors, 3));
+        fwGeometry.setAttribute('size', new THREE.BufferAttribute(fwSizes, 1));
+
+        const fwMaterial = new THREE.PointsMaterial({
+          size: layer.size,
+          vertexColors: true,
+          blending: THREE.AdditiveBlending,
+          transparent: true,
+          sizeAttenuation: true,
+        });
+
+        const fwParticles = new THREE.Points(fwGeometry, fwMaterial);
+        sceneRef.current?.add(fwParticles);
+
+        fireworksRef.current.push({
+          particles: fwParticles,
+          velocities: fwVelocities,
+          age: 0,
+          lifetime: 3.0,
+          active: true,
+          layerIndex: layerIndex
+        });
+      }, layer.delay * 1000);
+    });
+
+    if (starRef.current && isTreeFormed) {
+      gsap.to(starRef.current.scale, {
+        x: 10,
+        y: 10,
+        duration: 0.2,
+        ease: 'power2.out',
+        yoyo: true,
+        repeat: 1,
+      });
+    }
+  };
 
   return (
     <div className="relative w-full h-full bg-black">
       <div ref={containerRef} className="absolute inset-0 z-0 overflow-hidden" />
-      <video ref={videoRef} className="hidden" playsInline muted />
 
       <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none p-6 flex flex-col justify-between">
         <div className="flex justify-between items-start w-full">
-            <div className="bg-black/60 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-xl">
-                <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600">
-                    Gesture Christmas Tree
-                </h1>
-                <div className="mt-2 text-sm text-gray-300 font-mono">
-                    <div className="flex items-center gap-2">
-                <span className="text-xl">✊</span>
-                <span>握拳形成圣诞树并旋转</span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xl">🖐️</span>
-                <span>张开手爆炸散开</span>
+          <div className="bg-black/60 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-xl">
+            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600">
+              圣诞树
+            </h1>
+            <div className="mt-2 text-sm text-gray-300">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">🖱️</span>
+                <span>鼠标拖拽旋转圣诞树</span>
               </div>
-              <div className="mt-3 pt-2 border-t border-white/10">
-                <div className="text-xs text-gray-400 mb-1">手指数量：</div>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">☝️</span>
-                  <span>1根手指切换颜色</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xl">✌️</span>
-                  <span>2根手指飘雪</span>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xl">🤟</span>
-                  <span>3根手指烟花</span>
-                </div>
-                    </div>
-                </div>
             </div>
+          </div>
 
-          <div className="flex flex-col gap-2 items-end">
-            <div
-              className={`
-                flex items-center gap-2 px-4 py-2 rounded-full border backdrop-blur-md font-bold text-xs tracking-wider shadow-lg
-                ${cameraStatus === 'ACTIVE' ? 'border-green-500/30 bg-green-900/30 text-green-400' : ''}
-                ${cameraStatus === 'LOADING' ? 'border-blue-500/30 bg-blue-900/30 text-blue-400' : ''}
-                ${cameraStatus === 'ERROR' ? 'border-red-500/30 bg-red-900/30 text-red-400' : ''}
-              `}
-            >
-                <span className={`flex h-3 w-3 relative`}>
-                <span
-                  className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    cameraStatus === 'ACTIVE'
-                      ? 'bg-green-400'
-                      : cameraStatus === 'LOADING'
-                      ? 'bg-blue-400'
-                      : 'bg-red-400'
-                  }`}
-                ></span>
-                <span
-                  className={`relative inline-flex rounded-full h-3 w-3 ${
-                    cameraStatus === 'ACTIVE'
-                      ? 'bg-green-500'
-                      : cameraStatus === 'LOADING'
-                      ? 'bg-blue-500'
-                      : 'bg-red-500'
-                  }`}
-                ></span>
-                </span>
-              {cameraStatus === 'LOADING'
-                ? 'INITIALIZING VISION...'
-                : cameraStatus === 'ACTIVE'
-                ? 'VISION ACTIVE'
-                : 'VISION FAILED'}
-            </div>
-
-            <div className="px-4 py-2 rounded-full border border-purple-500/30 bg-purple-900/30 backdrop-blur-md font-bold text-xs tracking-wider shadow-lg text-purple-300">
-              当前主题: {currentTheme}
-            </div>
-            </div>
+          <div className="px-4 py-2 rounded-full border border-purple-500/30 bg-purple-900/30 backdrop-blur-md font-bold text-xs tracking-wider shadow-lg text-purple-300">
+            当前主题: {currentTheme}
+          </div>
         </div>
 
         <div
           className={`
             absolute top-10 left-1/2 transform -translate-x-1/2
             transition-all duration-500 ease-out pointer-events-none
-            ${interactionState === 'PINCHING' ? 'scale-110 opacity-100' : 'scale-50 opacity-0'}
-        `}
+            ${isTreeFormed ? 'scale-110 opacity-100' : 'scale-50 opacity-0'}
+          `}
         >
-             <div className="text-6xl font-black text-yellow-100 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)] tracking-tighter mix-blend-screen">
-                 MERRY CHRISTMAS
-             </div>
+          <div className="text-6xl font-black text-yellow-100 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)] tracking-tighter mix-blend-screen">
+            MERRY CHRISTMAS
+          </div>
         </div>
 
-        {errorMessage && (
-            <div className="self-center bg-red-950/90 text-white p-6 rounded-xl border border-red-500 shadow-2xl pointer-events-auto max-w-md text-center">
-                <div className="text-4xl mb-2">⚠️</div>
-                <h3 className="font-bold text-lg mb-2">System Error</h3>
-                <p className="text-red-200 mb-4">{errorMessage}</p>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded transition-colors w-full font-bold"
-                >
-                    RETRY
-                </button>
-            </div>
-        )}
+        {/* Control Buttons */}
+        <div className="flex flex-col gap-3 items-center pointer-events-auto">
+          <button
+            onClick={toggleTree}
+            className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white font-bold text-lg rounded-xl shadow-2xl border border-green-400/30 transition-all hover:scale-105 active:scale-95"
+          >
+            {isTreeFormed ? '💥 散开' : '🎄 凝聚圣诞树'}
+          </button>
+          
+          <div className="flex gap-3">
+            <button
+              onClick={changeTheme}
+              disabled={!isTreeFormed}
+              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-purple-400/30 transition-all hover:scale-105 active:scale-95"
+            >
+              🎨 切换颜色
+            </button>
+            
+            <button
+              onClick={toggleSnow}
+              disabled={!isTreeFormed || isSnowing}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-blue-400/30 transition-all hover:scale-105 active:scale-95"
+            >
+              ❄️ 飘雪
+            </button>
+            
+            <button
+              onClick={launchFireworks}
+              disabled={!isTreeFormed}
+              className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-yellow-400/30 transition-all hover:scale-105 active:scale-95"
+            >
+              🎆 烟花
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -3,29 +3,23 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Gesture Christmas Tree</title>
+    <title>圣诞树</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Three.js CDN -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js" crossorigin="anonymous"></script>
-    <!-- MediaPipe Dependencies - Load in order -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-    <script>
-      // Ensure Camera is available globally
-      window.addEventListener('load', () => {
-        if (typeof Camera === 'undefined' && typeof window.Camera === 'undefined') {
-          console.warn('MediaPipe Camera not found in expected location');
-        }
-      });
-    </script>
+    <script
+      src="https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.min.js"
+      crossorigin="anonymous"
+    ></script>
     <style>
-      body { margin: 0; overflow: hidden; background-color: #050505; }
+      body {
+        margin: 0;
+        overflow: hidden;
+        background-color: #050505;
+      }
     </style>
-</head>
+  </head>
   <body>
     <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-</body>
+    <script type="module" src="/index.tsx"></script>
+  </body>
 </html>
