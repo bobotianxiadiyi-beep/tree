@@ -181,6 +181,9 @@ const GestureTree: React.FC = () => {
     const colorGreen = new THREE.Color(0x4ECDC4);
     const tempColor = new THREE.Color();
 
+    // 手机端减少初始位置的随机抖动
+    const jitterMultiplier = isMobile() ? 0.5 : 1.0;
+
     // Initialize particle positions and targets
     for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
@@ -207,8 +210,8 @@ const GestureTree: React.FC = () => {
         const droop = r * 0.4;
         y -= droop;
         
-        const yRandomness = (Math.random() - 0.5) * 0.6;
-        const depthJitter = (Math.random() - 0.5) * (0.8 + normalizedY * 1.2);
+        const yRandomness = (Math.random() - 0.5) * 0.6 * jitterMultiplier;
+        const depthJitter = (Math.random() - 0.5) * (0.8 + normalizedY * 1.2) * jitterMultiplier;
         
         targetTree[i3] = Math.cos(angle) * r + depthJitter * 0.3;
         targetTree[i3 + 1] = y + yRandomness;
@@ -232,8 +235,8 @@ const GestureTree: React.FC = () => {
         const droop = r * 0.4;
         y -= droop;
         
-        const yRandomness = (Math.random() - 0.5) * 0.6;
-        const depthJitter = (Math.random() - 0.5) * (0.8 + normalizedY * 1.2);
+        const yRandomness = (Math.random() - 0.5) * 0.6 * jitterMultiplier;
+        const depthJitter = (Math.random() - 0.5) * (0.8 + normalizedY * 1.2) * jitterMultiplier;
         
         targetTree[i3] = Math.cos(angle) * r + depthJitter * 0.3;
         targetTree[i3 + 1] = y + yRandomness;
@@ -400,7 +403,7 @@ const GestureTree: React.FC = () => {
     const GRAVITY_STRENGTH = 0.35;
     const EXPLOSION_STRENGTH = 0.25;
     const DAMPING = 0.90;
-    const BROWN_MOTION = 0.03;
+    const BROWN_MOTION = isMobile() ? 0.015 : 0.03; // 手机端抖动减半
     
     const animate = () => {
         animationFrameId = requestAnimationFrame(animate);
