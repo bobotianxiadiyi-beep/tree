@@ -276,8 +276,10 @@ const GestureTree: React.FC = () => {
       colors[i3 + 1] = tempColor.g;
       colors[i3 + 2] = tempColor.b;
 
-      // Sizes and alphas (variation for depth)
-      sizes[i] = 0.8 + Math.random() * 0.6;
+      // Sizes and alphas (variation for depth) - 手机端粒子更小
+      const baseSize = isMobile() ? 0.5 : 0.8;
+      const sizeVariation = isMobile() ? 0.4 : 0.6;
+      sizes[i] = baseSize + Math.random() * sizeVariation;
       alphas[i] = 0.7 + Math.random() * 0.3;
     }
 
@@ -379,8 +381,9 @@ const GestureTree: React.FC = () => {
     
     snowGeometry.setAttribute('position', new THREE.BufferAttribute(snowPositions, 3).setUsage(THREE.DynamicDrawUsage));
     
+    // 手机端雪花也更小
     const snowMaterial = new THREE.PointsMaterial({
-      size: 0.3,
+      size: isMobile() ? 0.2 : 0.3,
       color: 0xffffff,
       transparent: true,
       opacity: 0.8,
@@ -760,12 +763,13 @@ const GestureTree: React.FC = () => {
       z: 0
     };
 
-    // 移动端减少烟花粒子数
+    // 移动端减少烟花粒子数，粒子尺寸也更小
     const mobile = isMobile();
+    const sizeMultiplier = mobile ? 0.6 : 1.0; // 手机端粒子缩小到 60%
     const layers = [
-      { count: mobile ? 60 : 200, speed: 0.8, size: 0.8, delay: 0 },
-      { count: mobile ? 45 : 150, speed: 0.5, size: 0.6, delay: 0.1 },
-      { count: mobile ? 30 : 100, speed: 0.3, size: 0.4, delay: 0.2 },
+      { count: mobile ? 60 : 200, speed: 0.8, size: 0.8 * sizeMultiplier, delay: 0 },
+      { count: mobile ? 45 : 150, speed: 0.5, size: 0.6 * sizeMultiplier, delay: 0.1 },
+      { count: mobile ? 30 : 100, speed: 0.3, size: 0.4 * sizeMultiplier, delay: 0.2 },
     ];
 
     layers.forEach((layer, layerIndex) => {
