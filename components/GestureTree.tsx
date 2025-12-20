@@ -5,9 +5,17 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { gsap } from 'gsap';
 
-const PARTICLE_COUNT = 5000;
-const TREE_HEIGHT = 25;
-const TREE_RADIUS = 10;
+// 检测是否为移动设备
+const isMobile = () => {
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+    || window.innerWidth < 768;
+};
+
+// 根据设备类型设置粒子数量和尺寸
+const PARTICLE_COUNT = isMobile() ? 1200 : 5000;  // 手机端用1200，PC端用5000
+const SNOW_COUNT = isMobile() ? 300 : 1000;       // 雪花也相应减少
+const TREE_HEIGHT = isMobile() ? 20 : 25;         // 手机端树更矮一些
+const TREE_RADIUS = isMobile() ? 8 : 10;          // 手机端树更窄一些
 
 // Custom Shader Material for glowing golden particles
 const particleVertexShader = `
@@ -119,23 +127,25 @@ const GestureTree: React.FC = () => {
     scene.fog = new THREE.FogExp2(0x000000, 0.02);
     sceneRef.current = scene;
 
+    // 相机设置 - 手机端调整视角和距离
     const camera = new THREE.PerspectiveCamera(
-      60,
+      isMobile() ? 70 : 60,  // 手机端视野更广
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    camera.position.set(0, 0, 35); 
+    camera.position.set(0, 0, isMobile() ? 40 : 35);  // 手机端相机拉远
     camera.lookAt(0, 0, 0);
     cameraRef.current = camera;
 
     const renderer = new THREE.WebGLRenderer({ 
-      antialias: true,
+      antialias: !isMobile(), // 移动端关闭抗锯齿以提升性能
       powerPreference: 'high-performance',
         alpha: false, 
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 移动端使用更低的像素比
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile() ? 1.5 : 2));
     renderer.setClearColor(0x000000);
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
@@ -145,11 +155,12 @@ const GestureTree: React.FC = () => {
     const renderPass = new RenderPass(scene, camera);
     composer.addPass(renderPass);
 
+    // 移动端使用更轻量的 Bloom 效果
     const bloomPass = new UnrealBloomPass(
       new THREE.Vector2(window.innerWidth, window.innerHeight),
-      2.2, // strength (increased for more golden glow)
-      0.5, // radius (slightly increased for wider glow)
-      0.7 // threshold (lowered to catch more particles)
+      isMobile() ? 1.8 : 2.2, // 移动端降低强度
+      isMobile() ? 0.4 : 0.5, // 移动端缩小半径
+      isMobile() ? 0.75 : 0.7 // 移动端提高阈值
     );
     composer.addPass(bloomPass);
     composerRef.current = composer;
@@ -294,8 +305,8 @@ const GestureTree: React.FC = () => {
     // Group for rotation
     const treeGroup = new THREE.Group();
     treeGroup.add(particles);
-    // 向上移动整棵树，上下都留有空白
-    treeGroup.position.y = 2; // 向上移动2个单位，上下平衡
+    // 向上移动整棵树，手机端位置稍微低一点以适配底部按钮
+    treeGroup.position.y = isMobile() ? 0 : 2;
     scene.add(treeGroup);
     treeGroupRef.current = treeGroup;
 
@@ -357,7 +368,6 @@ const GestureTree: React.FC = () => {
     scene.add(directionalLight);
 
     // Snow Particle System
-    const SNOW_COUNT = 1000;
     const snowGeometry = new THREE.BufferGeometry();
     const snowPositions = new Float32Array(SNOW_COUNT * 3);
     
@@ -602,7 +612,7 @@ const GestureTree: React.FC = () => {
     };
   }, []); 
 
-  // 2. Mouse Control
+  // 2. Mouse and Touch Control
   useEffect(() => {
     const handleMouseDown = (e: MouseEvent) => {
       if (isTreeFormed) {
@@ -627,14 +637,44 @@ const GestureTree: React.FC = () => {
       isDraggingRef.current = false;
     };
 
+    // 触摸事件支持（手机端）
+    const handleTouchStart = (e: TouchEvent) => {
+      if (isTreeFormed && e.touches.length === 1) {
+        isDraggingRef.current = true;
+        lastMouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isDraggingRef.current && isTreeFormed && e.touches.length === 1) {
+        const deltaX = e.touches[0].clientX - lastMouseRef.current.x;
+        const deltaY = e.touches[0].clientY - lastMouseRef.current.y;
+        
+        rotationCurrentRef.current.y += deltaX * 0.01;
+        rotationCurrentRef.current.x += deltaY * 0.01;
+        
+        lastMouseRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
+    const handleTouchEnd = () => {
+      isDraggingRef.current = false;
+    };
+
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchstart', handleTouchStart);
+    window.addEventListener('touchmove', handleTouchMove);
+    window.addEventListener('touchend', handleTouchEnd);
 
     return () => {
       window.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
     };
   }, [isTreeFormed]);
 
@@ -720,10 +760,12 @@ const GestureTree: React.FC = () => {
       z: 0
     };
 
+    // 移动端减少烟花粒子数
+    const mobile = isMobile();
     const layers = [
-      { count: 200, speed: 0.8, size: 0.8, delay: 0 },
-      { count: 150, speed: 0.5, size: 0.6, delay: 0.1 },
-      { count: 100, speed: 0.3, size: 0.4, delay: 0.2 },
+      { count: mobile ? 60 : 200, speed: 0.8, size: 0.8, delay: 0 },
+      { count: mobile ? 45 : 150, speed: 0.5, size: 0.6, delay: 0.1 },
+      { count: mobile ? 30 : 100, speed: 0.3, size: 0.4, delay: 0.2 },
     ];
 
     layers.forEach((layer, layerIndex) => {
@@ -805,69 +847,80 @@ const GestureTree: React.FC = () => {
     <div className="relative w-full h-full bg-black">
       <div ref={containerRef} className="absolute inset-0 z-0 overflow-hidden" />
 
-      <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none p-6 flex flex-col justify-between">
-        <div className="flex justify-between items-start w-full">
-          <div className="bg-black/60 backdrop-blur-md p-4 rounded-xl border border-white/10 shadow-xl">
-            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600">
+      <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none p-3 md:p-6 flex flex-col justify-between">
+        <div className="flex justify-between items-start w-full gap-2">
+          <div className="bg-black/60 backdrop-blur-md p-2 md:p-4 rounded-lg md:rounded-xl border border-white/10 shadow-xl">
+            <h1 className="text-lg md:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-600">
               圣诞树
             </h1>
-            <div className="mt-2 text-sm text-gray-300">
-              <div className="flex items-center gap-2">
-                <span className="text-xl">🖱️</span>
-                <span>鼠标拖拽旋转圣诞树</span>
+            <div className="mt-1 md:mt-2 text-xs md:text-sm text-gray-300">
+              <div className="flex items-center gap-1 md:gap-2">
+                <span className="text-sm md:text-xl">🖱️</span>
+                <span className="hidden md:inline">鼠标拖拽旋转圣诞树</span>
+                <span className="md:hidden">拖拽旋转</span>
+              </div>
+              <div className="flex items-center gap-1 md:gap-2 mt-1 text-xs text-gray-400">
+                <span>{isMobile() ? '📱' : '💻'}</span>
+                <span className="hidden md:inline">粒子数: {PARTICLE_COUNT}</span>
               </div>
             </div>
           </div>
 
-          <div className="px-4 py-2 rounded-full border border-purple-500/30 bg-purple-900/30 backdrop-blur-md font-bold text-xs tracking-wider shadow-lg text-purple-300">
-            当前主题: {currentTheme}
+          <div className="px-2 md:px-4 py-1 md:py-2 rounded-full border border-purple-500/30 bg-purple-900/30 backdrop-blur-md font-bold text-xs tracking-wider shadow-lg text-purple-300">
+            <span className="hidden md:inline">当前主题: </span>{currentTheme}
           </div>
         </div>
 
         <div
           className={`
-            absolute top-10 left-1/2 transform -translate-x-1/2
+            absolute top-16 md:top-10 left-1/2 transform -translate-x-1/2
             transition-all duration-500 ease-out pointer-events-none
             ${isTreeFormed ? 'scale-110 opacity-100' : 'scale-50 opacity-0'}
           `}
         >
-          <div className="text-6xl font-black text-yellow-100 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)] tracking-tighter mix-blend-screen">
+          <div className="text-2xl md:text-6xl font-black text-yellow-100 drop-shadow-[0_0_30px_rgba(255,215,0,0.8)] tracking-tighter mix-blend-screen whitespace-nowrap px-4">
             MERRY CHRISTMAS
           </div>
         </div>
 
         {/* Control Buttons */}
-        <div className="flex flex-col gap-3 items-center pointer-events-auto">
+        <div className="flex flex-col gap-2 md:gap-3 items-center pointer-events-auto w-full px-2 md:px-0">
           <button
             onClick={toggleTree}
-            className="px-8 py-4 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-500 hover:to-green-600 text-white font-bold text-lg rounded-xl shadow-2xl border border-green-400/30 transition-all hover:scale-105 active:scale-95"
+            className="w-full md:w-auto px-6 md:px-8 py-3 md:py-4 bg-gradient-to-r from-green-600 to-green-700 active:from-green-500 active:to-green-600 text-white font-bold text-base md:text-lg rounded-lg md:rounded-xl shadow-2xl border border-green-400/30 transition-all active:scale-95 touch-manipulation"
           >
             {isTreeFormed ? '💥 散开' : '🎄 凝聚圣诞树'}
           </button>
           
-          <div className="flex gap-3">
+          <div className="grid grid-cols-3 gap-2 w-full md:flex md:gap-3 md:w-auto">
             <button
               onClick={changeTheme}
               disabled={!isTreeFormed}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-purple-400/30 transition-all hover:scale-105 active:scale-95"
+              className="px-2 py-3 md:px-6 md:py-3 bg-gradient-to-r from-purple-600 to-pink-600 active:from-purple-500 active:to-pink-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl shadow-xl border border-purple-400/30 transition-all active:scale-95 touch-manipulation flex flex-col md:flex-row items-center justify-center gap-1"
             >
-              🎨 切换颜色
+              <span className="text-xl md:text-base">🎨</span>
+              <span className="text-xs md:text-base md:hidden">颜色</span>
+              <span className="hidden md:inline">切换颜色</span>
             </button>
             
             <button
               onClick={toggleSnow}
               disabled={!isTreeFormed || isSnowing}
-              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-blue-400/30 transition-all hover:scale-105 active:scale-95"
+              className="px-2 py-3 md:px-6 md:py-3 bg-gradient-to-r from-blue-600 to-cyan-600 active:from-blue-500 active:to-cyan-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl shadow-xl border border-blue-400/30 transition-all active:scale-95 touch-manipulation flex flex-col md:flex-row items-center justify-center gap-1"
             >
-              ❄️ 飘雪
+              <span className="text-xl md:text-base">❄️</span>
+              <span className="text-xs md:text-base md:hidden">飘雪</span>
+              <span className="hidden md:inline">飘雪</span>
             </button>
             
             <button
               onClick={launchFireworks}
               disabled={!isTreeFormed}
-              className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-500 hover:to-orange-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-xl border border-yellow-400/30 transition-all hover:scale-105 active:scale-95"
+              className="px-2 py-3 md:px-6 md:py-3 bg-gradient-to-r from-yellow-600 to-orange-600 active:from-yellow-500 active:to-orange-500 disabled:from-gray-600 disabled:to-gray-700 disabled:opacity-50 text-white font-bold text-sm md:text-base rounded-lg md:rounded-xl shadow-xl border border-yellow-400/30 transition-all active:scale-95 touch-manipulation flex flex-col md:flex-row items-center justify-center gap-1"
             >
-              🎆 烟花
+              <span className="text-xl md:text-base">🎆</span>
+              <span className="text-xs md:text-base md:hidden">烟花</span>
+              <span className="hidden md:inline">烟花</span>
             </button>
           </div>
         </div>
