@@ -12,7 +12,7 @@ const isMobile = () => {
 };
 
 // 根据设备类型设置粒子数量和尺寸
-const PARTICLE_COUNT = isMobile() ? 1200 : 5000;  // 手机端用1200，PC端用5000
+const PARTICLE_COUNT = isMobile() ? 1800 : 5000;  // 手机端用1800，PC端用5000
 const SNOW_COUNT = isMobile() ? 300 : 1000;       // 雪花也相应减少
 const TREE_HEIGHT = isMobile() ? 20 : 25;         // 手机端树更矮一些
 const TREE_RADIUS = isMobile() ? 8 : 10;          // 手机端树更窄一些
@@ -277,8 +277,8 @@ const GestureTree: React.FC = () => {
       colors[i3 + 2] = tempColor.b;
 
       // Sizes and alphas (variation for depth) - 手机端粒子更小
-      const baseSize = isMobile() ? 0.5 : 0.8;
-      const sizeVariation = isMobile() ? 0.4 : 0.6;
+      const baseSize = isMobile() ? 0.35 : 0.8;
+      const sizeVariation = isMobile() ? 0.3 : 0.6;
       sizes[i] = baseSize + Math.random() * sizeVariation;
       alphas[i] = 0.7 + Math.random() * 0.3;
     }
@@ -383,7 +383,7 @@ const GestureTree: React.FC = () => {
     
     // 手机端雪花也更小
     const snowMaterial = new THREE.PointsMaterial({
-      size: isMobile() ? 0.2 : 0.3,
+      size: isMobile() ? 0.15 : 0.3,
       color: 0xffffff,
       transparent: true,
       opacity: 0.8,
@@ -765,7 +765,7 @@ const GestureTree: React.FC = () => {
 
     // 移动端减少烟花粒子数，粒子尺寸也更小
     const mobile = isMobile();
-    const sizeMultiplier = mobile ? 0.6 : 1.0; // 手机端粒子缩小到 60%
+    const sizeMultiplier = mobile ? 0.5 : 1.0; // 手机端粒子缩小到 50%
     const layers = [
       { count: mobile ? 60 : 200, speed: 0.8, size: 0.8 * sizeMultiplier, delay: 0 },
       { count: mobile ? 45 : 150, speed: 0.5, size: 0.6 * sizeMultiplier, delay: 0.1 },
